@@ -6,7 +6,7 @@ const agentIcon: Record<string, string> = {
   codex: '/icons/codex.png',
   hermes: '/icons/hermes.png',
   openclaw: '/icons/openclaw.png',
-  workbuddy: '/icons/workbuddy.ico',
+  workbuddy: '/icons/workbuddy.png',
   marvis: '/icons/marvis.ico',
   claude: '/icons/claude.svg',
 }
