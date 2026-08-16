@@ -1,4 +1,4 @@
-﻿use std::{env, fs, path::{Path, PathBuf}, process::Command, time::{SystemTime, UNIX_EPOCH}};
+use std::{env, fs, path::{Path, PathBuf}, process::Command, time::{SystemTime, UNIX_EPOCH}};
 use sha2::{Digest, Sha256};
 
 pub fn program_files() -> PathBuf { env::var_os("ProgramFiles").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Program Files")) }
@@ -59,7 +59,73 @@ pub fn launch(path: &Path) -> Result<(), String> {
 }
 
 pub fn command_capture(command: &str, args: &[&str]) -> Option<String> {
-    Command::new(command).args(args).output().ok().map(|out| format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)))
+    Command::new(command).args(args).output().ok().and_then(|out| {
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        if stdout.is_empty() && stderr.is_empty() { None } else { Some(format!("{stdout}\n{stderr}")) }
+    })
+}
+
+pub fn command_capture_stdout(command: &str, args: &[&str]) -> Option<String> {
+    let out = Command::new(command).args(args).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if text.is_empty() { None } else { Some(text) }
+}
+
+pub fn winget_latest_version(package_id: &str) -> Option<String> {
+    let output = command_capture_stdout("winget.exe", &["show", "--id", package_id, "--accept-source-agreements"])?;
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if let Some(ver) = trimmed.strip_prefix("Version:") {
+            let ver = ver.trim();
+            if !ver.is_empty() { return Some(ver.to_string()); }
+        }
+    }
+    None
+}
+
+pub fn github_latest_version(owner: &str, repo: &str) -> Option<String> {
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/releases/latest");
+    let output = command_capture_stdout("curl.exe", &["-sL", &url])?;
+    let value: serde_json::Value = serde_json::from_str(&output).ok()?;
+    let tag = value.get("tag_name")?.as_str()?;
+    let ver = tag.strip_prefix('v').unwrap_or(tag).to_string();
+    Some(ver)
+}
+
+pub fn npm_latest_version(package_name: &str) -> Option<String> {
+    let url = format!("https://registry.npmjs.org/{package_name}/latest");
+    let output = command_capture_stdout("curl.exe", &["-sL", &url])?;
+    let value: serde_json::Value = serde_json::from_str(&output).ok()?;
+    value.get("version")?.as_str().map(|s| s.to_string())
+}
+
+pub fn curl_follow_redirect(url: &str) -> Option<String> {
+    command_capture_stdout("curl.exe", &["-sL", "-o", "NUL", "-w", "%{url_effective}", url])
+}
+
+pub fn parse_version_from_filename(filename: &str) -> Option<String> {
+    let parts: Vec<&str> = filename.split(&['_', '-', ' '][..]).collect();
+    for part in &parts {
+        let segments: Vec<&str> = part.split('.').collect();
+        if segments.len() >= 3 && segments.iter().all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_digit())) {
+            return Some(part.to_string());
+        }
+    }
+    None
+}
+
+pub fn is_update_available(installed: &str, latest: &str) -> bool {
+    let installed_segments: Vec<&str> = installed.split(&['.', '-', '_'][..]).collect();
+    let latest_segments: Vec<&str> = latest.split(&['.', '-', '_'][..]).collect();
+    let max_len = installed_segments.len().max(latest_segments.len());
+    for i in 0..max_len {
+        let a = installed_segments.get(i).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+        let b = latest_segments.get(i).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+        if a < b { return true; }
+        if a > b { return false; }
+    }
+    false
 }
 
 pub fn official_url_for(id: &str) -> &'static str {
@@ -70,23 +136,19 @@ pub fn official_url_for(id: &str) -> &'static str {
 pub fn sha256(path: &Path) -> Option<String> {
     let bytes = fs::read(path).ok()?;
     let digest = Sha256::digest(bytes);
-    Some(format!("{:x}", digest))
+    Some(format!("{digest:x}"))
 }
 
 pub fn download_to_temp(url: &str, prefix: &str) -> Result<PathBuf, String> {
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_millis();
-    let downloads = app_data().join("AgentManager\\downloads"); let _ = fs::create_dir_all(&downloads); let output = downloads.join(format!("{}_{}.exe", prefix, stamp));
-    let result = Command::new("curl.exe").args(["-fL", "--max-time", "45", url, "-o"]).arg(&output).output().map_err(|e| format!("无法启动 curl: {}", e))?;
+    let downloads = app_data().join("AgentManager\\downloads"); let _ = fs::create_dir_all(&downloads); let output = downloads.join(format!("{prefix}_{stamp}.exe"));
+    let result = Command::new("curl.exe").args(["-fL", "--max-time", "45", url, "-o"]).arg(&output).output().map_err(|e| format!("无法启动 curl: {e}"))?;
     if !result.status.success() { return Err(format!("下载官方安装包失败：{}", String::from_utf8_lossy(&result.stderr).trim())); }
     let bytes = fs::read(&output).map_err(|e| e.to_string())?;
     if bytes.len() < 2 || &bytes[..2] != b"MZ" { return Err("官方地址没有返回 Windows PE 安装包".to_string()); }
     if bytes.len() > 256 * 1024 * 1024 { return Err("官方安装包超过 256 MB 安全上限".to_string()); }
     Ok(output)
 }
-
-
-
-
 
 #[cfg(test)]
 mod tests {
@@ -104,5 +166,18 @@ mod tests {
         let path = Path::new("C:\\Temp\\agent_1.2.exe");
         assert_eq!(parse_version_from_path(path), None);
     }
-}
 
+    #[test]
+    fn parses_version_from_filename() {
+        assert_eq!(super::parse_version_from_filename("marvis_4100100002_1.0.0.44_x64_6373.exe"), Some("1.0.0.44".into()));
+        assert_eq!(super::parse_version_from_filename("Claude-1.30096.1-Setup.exe"), Some("1.30096.1".into()));
+    }
+
+    #[test]
+    fn compares_versions() {
+        assert!(super::is_update_available("1.0.0", "1.0.1"));
+        assert!(!super::is_update_available("1.0.1", "1.0.0"));
+        assert!(!super::is_update_available("1.0.0", "1.0.0"));
+        assert!(super::is_update_available("0.146.0", "0.146.1"));
+    }
+}

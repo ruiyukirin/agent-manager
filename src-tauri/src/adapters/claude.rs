@@ -93,18 +93,34 @@ impl AgentAdapter for ClaudeAdapter {
     }
 
     fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
-        agent.latest_version = None;
-        agent.status = AgentStatus::ManualAction;
-        agent.detail = if agent.install_path.as_deref().map_or(false, |p| p.contains("WindowsApps")) {
-            "Claude 桌面版通过 Microsoft Store 更新".into()
-        } else {
-            "Claude Code 通过 claude update 或官网下载更新".into()
-        };
+        match winget_latest_version("Anthropic.Claude") {
+            Some(latest) => {
+                agent.latest_version = Some(latest.clone());
+                let current = agent.version.as_ref().and_then(|v| v.product.as_deref().or(v.pe.as_deref())).unwrap_or("");
+                if current.is_empty() {
+                    agent.status = AgentStatus::ManualAction;
+                    agent.detail = format!("云端最新版本：{}", latest);
+                } else if is_update_available(current, &latest) {
+                    agent.status = AgentStatus::UpdateAvailable;
+                    agent.detail = format!("{} → {} 可更新", current, latest);
+                } else {
+                    agent.status = AgentStatus::UpToDate;
+                    agent.detail = "已是最新版本".into();
+                }
+            }
+            None => {
+                agent.latest_version = None;
+                agent.status = AgentStatus::ManualAction;
+                agent.detail = if agent.install_path.as_deref().map_or(false, |p| p.contains("WindowsApps")) {
+                    "Claude 桌面版通过 Microsoft Store 更新".into()
+                } else {
+                    "Claude Code 通过 claude update 或官网下载更新".into()
+                };
+            }
+        }
         agent.last_checked = Some("刚刚".into());
         Ok(())
-    }
-
-    fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> {
+    }fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> {
         Ok(UpdateResult {
             success: false,
             message: "请通过 claude update 或官网下载更新".into(),

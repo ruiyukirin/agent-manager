@@ -67,17 +67,34 @@ impl AgentAdapter for CodexAdapter {
         } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 Codex 安装")) }
     }
     fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
-        agent.latest_version = None;
-        agent.status = AgentStatus::ManualAction;
-        agent.detail = if agent.install_path.as_deref().map_or(false, |p| p.contains("WindowsApps")) {
-            "AppX 精确版本由 Microsoft Store 管理".into()
-        } else {
-            "CLI 通过 codex update 命令更新".into()
-        };
+        match winget_latest_version("OpenAI.Codex") {
+            Some(latest) => {
+                agent.latest_version = Some(latest.clone());
+                let current = agent.version.as_ref().and_then(|v| v.product.as_deref().or(v.pe.as_deref())).unwrap_or("");
+                if current.is_empty() {
+                    agent.status = AgentStatus::ManualAction;
+                    agent.detail = format!("云端最新版本：{}", latest);
+                } else if is_update_available(current, &latest) {
+                    agent.status = AgentStatus::UpdateAvailable;
+                    agent.detail = format!("{} → {} 可更新", current, latest);
+                } else {
+                    agent.status = AgentStatus::UpToDate;
+                    agent.detail = "已是最新版本".into();
+                }
+            }
+            None => {
+                agent.latest_version = None;
+                agent.status = AgentStatus::ManualAction;
+                agent.detail = if agent.install_path.as_deref().map_or(false, |p| p.contains("WindowsApps")) {
+                    "AppX 精确版本由 Microsoft Store 管理".into()
+                } else {
+                    "CLI 通过 codex update 命令更新".into()
+                };
+            }
+        }
         agent.last_checked = Some("刚刚".into());
         Ok(())
-    }
-    fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> {
+    }fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> {
         Ok(UpdateResult { success: false, message: "请通过 Microsoft Store 或 codex update 更新".into(), mode: UpdateMode::ManualAction, official_url: Some(self.official_url().into()), needs_restart: false, previous_version: None, current_version: None })
     }
     fn restart_if_was_running(&self, agent: &mut AgentInstance, was_running: bool) -> Result<(), String> {
@@ -157,7 +174,31 @@ impl AgentAdapter for HermesAdapter {
             Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: install.map(|p| p.to_string_lossy().into_owned()), executable_path: Some(path.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("installer".into()), pe: version }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("hermes.exe"), update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), detail: "原生 Windows 安装".into(), last_checked: None })
         } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 Hermes 安装")) }
     }
-    fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> { let output = command_capture("hermes.exe", &["update", "--check"]).unwrap_or_default(); agent.latest_version = None; agent.status = if output.is_empty() { AgentStatus::Error } else { AgentStatus::ManualAction }; agent.detail = if output.is_empty() { "无法读取 Hermes 更新检查结果" } else { "Hermes 使用 hermes update --check 检查更新" }.into(); agent.last_checked = Some("刚刚".into()); Ok(()) }
+    fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
+        match github_latest_version("NousResearch", "hermes-agent") {
+            Some(latest) => {
+                agent.latest_version = Some(latest.clone());
+                let current = agent.version.as_ref().and_then(|v| v.product.as_deref().or(v.pe.as_deref())).unwrap_or("");
+                if current.is_empty() {
+                    agent.status = AgentStatus::ManualAction;
+                    agent.detail = format!("云端最新版本：{}", latest);
+                } else if is_update_available(current, &latest) {
+                    agent.status = AgentStatus::UpdateAvailable;
+                    agent.detail = format!("{} → {} 可更新", current, latest);
+                } else {
+                    agent.status = AgentStatus::UpToDate;
+                    agent.detail = "已是最新版本".into();
+                }
+            }
+            None => {
+                agent.latest_version = None;
+                agent.status = AgentStatus::Error;
+                agent.detail = "无法查询 GitHub 最新版本".into();
+            }
+        }
+        agent.last_checked = Some("刚刚".into());
+        Ok(())
+    }
     fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> { Ok(UpdateResult { success: false, message: "请运行 hermes update 完成更新".into(), mode: UpdateMode::NativeUpdater, official_url: Some(self.official_url().into()), needs_restart: false, previous_version: None, current_version: None }) }
     fn restart_if_was_running(&self, _agent: &mut AgentInstance, was_running: bool) -> Result<(), String> { if was_running { let _ = command_capture("hermes.exe", &["gateway", "restart"]); } Ok(()) }
 }
@@ -175,7 +216,31 @@ impl AgentAdapter for OpenClawAdapter {
             Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: path.parent().map(|p| p.to_string_lossy().into_owned()), executable_path: Some(path.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("npm".into()), pe: version }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("openclaw.exe") || is_process_running("openclaw-gateway.exe"), update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), detail: "npm / pnpm 安装".into(), last_checked: None })
         } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 OpenClaw 安装")) }
     }
-    fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> { agent.latest_version = None; agent.status = AgentStatus::ManualAction; agent.detail = "OpenClaw 使用 openclaw update status --json 检查更新".into(); agent.last_checked = Some("刚刚".into()); Ok(()) }
+    fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
+        match npm_latest_version("openclaw") {
+            Some(latest) => {
+                agent.latest_version = Some(latest.clone());
+                let current = agent.version.as_ref().and_then(|v| v.product.as_deref().or(v.pe.as_deref())).unwrap_or("");
+                if current.is_empty() {
+                    agent.status = AgentStatus::ManualAction;
+                    agent.detail = format!("云端最新版本：{}", latest);
+                } else if is_update_available(current, &latest) {
+                    agent.status = AgentStatus::UpdateAvailable;
+                    agent.detail = format!("{} → {} 可更新", current, latest);
+                } else {
+                    agent.status = AgentStatus::UpToDate;
+                    agent.detail = "已是最新版本".into();
+                }
+            }
+            None => {
+                agent.latest_version = None;
+                agent.status = AgentStatus::ManualAction;
+                agent.detail = "OpenClaw 使用 openclaw update status --json 检查更新".into();
+            }
+        }
+        agent.last_checked = Some("刚刚".into());
+        Ok(())
+    }
     fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> { Ok(UpdateResult { success: false, message: "请运行 openclaw update 完成更新".into(), mode: UpdateMode::NativeUpdater, official_url: Some(self.official_url().into()), needs_restart: false, previous_version: None, current_version: None }) }
     fn restart_if_was_running(&self, _agent: &mut AgentInstance, was_running: bool) -> Result<(), String> { if was_running { let _ = command_capture("openclaw.cmd", &["gateway", "restart"]); } Ok(()) }
 }

@@ -1,4 +1,4 @@
-﻿use super::common::*;
+use super::common::*;
 use crate::adapter::{AgentAdapter, not_installed};
 use crate::model::{AgentInstance, AgentStatus, UpdateMode, UpdateResult};
 use std::{path::{Path, PathBuf}};
@@ -27,9 +27,27 @@ impl AgentAdapter for WorkBuddyAdapter {
         } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 WorkBuddy 安装")) }
     }
     fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
-        agent.latest_version = None;
-        agent.status = AgentStatus::ManualAction;
-        agent.detail = "官方客户端未暴露独立版本接口；请使用官方安装包".into();
+        match winget_latest_version("Tencent.WorkBuddy") {
+            Some(latest) => {
+                agent.latest_version = Some(latest.clone());
+                let current = agent.version.as_ref().and_then(|v| v.product.as_deref().or(v.pe.as_deref())).unwrap_or("");
+                if current.is_empty() {
+                    agent.status = AgentStatus::ManualAction;
+                    agent.detail = format!("云端最新版本：{}", latest);
+                } else if is_update_available(current, &latest) {
+                    agent.status = AgentStatus::UpdateAvailable;
+                    agent.detail = format!("{} → {} 可更新", current, latest);
+                } else {
+                    agent.status = AgentStatus::UpToDate;
+                    agent.detail = "已是最新版本".into();
+                }
+            }
+            None => {
+                agent.latest_version = None;
+                agent.status = AgentStatus::ManualAction;
+                agent.detail = "官方客户端未暴露独立版本接口；请使用官方安装包".into();
+            }
+        }
         agent.last_checked = Some("刚刚".into());
         Ok(())
     }
@@ -59,10 +77,32 @@ impl AgentAdapter for MarvisAdapter {
         Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: Some(program_root.to_string_lossy().into_owned()), executable_path: executable.map(|p| p.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product, component, bootstrap: None, channel: Some("Windows".into()), pe: pe_version }), latest_version: None, status: AgentStatus::Checking, running, update_mode: UpdateMode::ManualAction, official_url: self.official_url().into(), detail: if setup.is_some() { "检测到 MarvisUpdate.exe 和版本清单" } else { "检测到 Marvis 启动器" }.into(), last_checked: None })
     }
     fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
-        agent.latest_version = None;
-        match download_to_temp(self.official_url(), "marvis_bootstrap") {
-            Ok(path) => { let bootstrap = parse_version_from_path(&path); let hash = sha256(&path); agent.status = AgentStatus::ManualAction; agent.detail = if bootstrap.is_some() { format!("已获取官方引导包 {}，但这不是应用最新版本；请使用 Marvis 内置更新器确认", bootstrap.unwrap_or_default()) } else { "已获取官方引导包，但无法解析应用版本".into() }; if let Some(hash) = hash { agent.detail.push_str(&format!(" · {}", &hash[..12])); }  }
-            Err(error) => { agent.status = AgentStatus::Error; agent.detail = error; }
+        // 通过跟踪下载重定向获取最新安装包名，从中提取版本号
+        let latest = curl_follow_redirect(self.official_url())
+            .and_then(|url| {
+                let filename = url.rsplit('/').next().unwrap_or(&url).to_string();
+                parse_version_from_filename(&filename)
+            });
+        match latest {
+            Some(version) => {
+                agent.latest_version = Some(version.clone());
+                let current = agent.version.as_ref().and_then(|v| v.product.as_deref().or(v.pe.as_deref())).unwrap_or("");
+                if current.is_empty() {
+                    agent.status = AgentStatus::ManualAction;
+                    agent.detail = format!("云端最新版本：{}", version);
+                } else if is_update_available(current, &version) {
+                    agent.status = AgentStatus::UpdateAvailable;
+                    agent.detail = format!("{} → {} 可更新", current, version);
+                } else {
+                    agent.status = AgentStatus::UpToDate;
+                    agent.detail = "已是最新版本".into();
+                }
+            }
+            None => {
+                agent.latest_version = None;
+                agent.status = AgentStatus::ManualAction;
+                agent.detail = "请通过 MarvisUpdate.exe 或官方安装器更新".into();
+            }
         }
         agent.last_checked = Some("刚刚".into());
         Ok(())
