@@ -2,7 +2,6 @@ name: Build & Release
 
 on:
   push:
-    branches: [ master ]
     tags: [ 'v*' ]
   workflow_dispatch:
 
@@ -46,7 +45,8 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'Agent Manager v${{ github.ref_name }}'
           releaseBody: |
-            自动构建版本。
-            下载 `agent-manager_${{ github.ref_name }}_x64-setup.exe` 安装。
-          releaseDraft: true
+            自动构建版本 v${{ github.ref_name }}（Windows x64）
+
+            下载 Agent.Manager_${{ github.ref_name }}_x64-setup.exe 安装。
+          releaseDraft: false
           prerelease: false
