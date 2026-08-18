@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,6 +29,14 @@ pub enum UpdateMode {
     ManualAction,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum InstallMethod {
+    Winget { #[serde(rename = "packageId")] package_id: String },
+    DirectDownload { url: String },
+    OpenBrowser { url: String },
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentInstance {
@@ -44,6 +52,8 @@ pub struct AgentInstance {
     pub running: bool,
     pub update_mode: UpdateMode,
     pub official_url: String,
+    pub install_url: String,
+    pub install_method: InstallMethod,
     pub detail: String,
     pub last_checked: Option<String>,
 }
@@ -68,3 +78,11 @@ pub struct UpdateResult {
     pub current_version: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallResult {
+    pub success: bool,
+    pub message: String,
+    pub method: InstallMethod,
+    pub needs_restart: bool,
+}

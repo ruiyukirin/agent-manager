@@ -1,6 +1,5 @@
 # Rust / Cargo
 src-tauri/target/
-src-tauri/Cargo.lock
 
 # Node
 node_modules/
@@ -24,3 +23,11 @@ Thumbs.db
 # Env
 .env
 .env.local
+
+# Local temp files and backups
+*.bak
+*.new
+
+# Root-level screenshots
+/*.jpg
+/*.png

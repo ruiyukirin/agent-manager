@@ -1,4 +1,6 @@
-﻿export type AgentStatus = 'not-installed' | 'checking' | 'up-to-date' | 'update-available' | 'manual-action' | 'error'
+export type AgentStatus = 'not-installed' | 'checking' | 'up-to-date' | 'update-available' | 'manual-action' | 'error'
+export type InstallMethod = { winget: { packageId: string } } | { directDownload: { url: string } } | { openBrowser: { url: string } }
+
 export type UpdateMode = 'native-updater' | 'staged-installer' | 'manual-action'
 
 export interface VersionSnapshot {
@@ -21,6 +23,8 @@ export interface AgentInstance {
   status: AgentStatus
   running: boolean
   updateMode: UpdateMode
+  installUrl: string
+  installMethod: InstallMethod
   officialUrl: string
   detail: string
   lastChecked: string | null
@@ -34,6 +38,13 @@ export interface UpdateResult {
   needsRestart: boolean
   previousVersion: string | null
   currentVersion: string | null
+}
+
+export interface InstallResult {
+  success: boolean
+  message: string
+  method: InstallMethod
+  needsRestart: boolean
 }
 
 

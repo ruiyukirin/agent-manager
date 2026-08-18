@@ -1,6 +1,6 @@
 use super::common::*;
 use crate::adapter::{AgentAdapter, not_installed};
-use crate::model::{AgentInstance, AgentStatus, UpdateMode, UpdateResult};
+use crate::model::{AgentInstance, AgentStatus, InstallMethod, UpdateMode, UpdateResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +11,8 @@ impl AgentAdapter for ClaudeAdapter {
     fn display_name(&self) -> &'static str { "Claude" }
     fn publisher(&self) -> &'static str { "Anthropic" }
     fn official_url(&self) -> &'static str { official_url_for("claude") }
+    fn install_method(&self) -> InstallMethod { InstallMethod::OpenBrowser { url: self.official_url().into() } }
+    fn install(&self) -> Result<(), String> { Err("Claude 桌面版请前往 anthropic.com 下载安装".into()) }
 
     fn discover(&self) -> Result<AgentInstance, String> {
         // Step 0: try WindowsApps (AppX)
@@ -27,7 +29,7 @@ impl AgentAdapter for ClaudeAdapter {
                     install_path: Some(install.to_string_lossy().into_owned()), executable_path: Some(executable.to_string_lossy().into_owned()),
                     version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("Windows".into()), pe: version }),
                     latest_version: None, status: AgentStatus::Checking, running: is_process_running("claude.exe"), update_mode: UpdateMode::ManualAction,
-                    official_url: self.official_url().into(), detail: "found via registry".into(), last_checked: None,
+                    official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: "found via registry".into(), last_checked: None,
                 });
             }
         }
@@ -53,7 +55,7 @@ impl AgentAdapter for ClaudeAdapter {
                 executable_path: Some(path.to_string_lossy().into_owned()),
                 version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("native".into()), pe: version.clone() }),
                 latest_version: None, status: AgentStatus::Checking, running: is_process_running("claude.exe"), update_mode: UpdateMode::ManualAction,
-                official_url: self.official_url().into(), detail: if version.is_some() { "found Claude Code install".into() } else { "found Claude entry".into() }, last_checked: None,
+                official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: if version.is_some() { "found Claude Code install".into() } else { "found Claude entry".into() }, last_checked: None,
             });
         }
 
@@ -71,7 +73,8 @@ impl AgentAdapter for ClaudeAdapter {
             }
             None
         }
-        let claude_roots = vec![local_app_data().join("Claude-3p"), PathBuf::from("C:\\Users\\yuqil\\.claude")];
+        let mut claude_roots = vec![local_app_data().join("Claude-3p")];
+        if let Some(home) = home_dir() { claude_roots.push(home.join(".claude")); }
         for root in &claude_roots {
             if root.exists() {
                 if let Some(exe) = scan_dir_recursive(root, 3) {
@@ -83,7 +86,7 @@ impl AgentAdapter for ClaudeAdapter {
                         executable_path: Some(exe.to_string_lossy().into_owned()),
                         version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("native".into()), pe: version.clone() }),
                         latest_version: None, status: AgentStatus::Checking, running: is_process_running("claude.exe"), update_mode: UpdateMode::ManualAction,
-                        official_url: self.official_url().into(), detail: if version.is_some() { "found via deep scan".into() } else { "found Claude entry".into() }, last_checked: None,
+                        official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: if version.is_some() { "found via deep scan".into() } else { "found Claude entry".into() }, last_checked: None,
                     });
                 }
             }
@@ -155,7 +158,7 @@ fn try_windows_apps_claude(adapter: &ClaudeAdapter) -> Option<AgentInstance> {
             executable_path: Some(executable.to_string_lossy().into_owned()),
             version: Some(crate::model::VersionSnapshot { product: version_raw.clone(), component: None, bootstrap: None, channel: Some("AppX".into()), pe: pe_version }),
             latest_version: None, status: AgentStatus::Checking, running: is_process_running("claude.exe"), update_mode: UpdateMode::ManualAction,
-            official_url: adapter.official_url().into(), detail: "桌面版安装".into(), last_checked: None,
+            official_url: adapter.official_url().into(), install_url: adapter.official_url().into(), install_method: InstallMethod::OpenBrowser { url: adapter.official_url().into() }, detail: "桌面版安装".into(), last_checked: None,
         });
     }
     None
@@ -180,7 +183,7 @@ fn try_running_process(adapter: &ClaudeAdapter) -> Option<AgentInstance> {
                 executable_path: Some(path.to_string_lossy().into_owned()),
                 version: Some(crate::model::VersionSnapshot { product: version_raw.clone(), component: None, bootstrap: None, channel: Some("AppX".into()), pe: pe_version }),
                 latest_version: None, status: AgentStatus::Checking, running: true, update_mode: UpdateMode::ManualAction,
-                official_url: adapter.official_url().into(), detail: "桌面版安装".into(), last_checked: None,
+                official_url: adapter.official_url().into(), install_url: adapter.official_url().into(), install_method: InstallMethod::OpenBrowser { url: adapter.official_url().into() }, detail: "桌面版安装".into(), last_checked: None,
             });
         }
     }

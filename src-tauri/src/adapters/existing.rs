@@ -1,6 +1,6 @@
-use super::common::*;
+﻿use super::common::*;
 use crate::adapter::{AgentAdapter, not_installed};
-use crate::model::{AgentInstance, AgentStatus, UpdateMode, UpdateResult};
+use crate::model::{AgentInstance, AgentStatus, InstallMethod, UpdateMode, UpdateResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -33,7 +33,7 @@ impl AgentAdapter for CodexAdapter {
                     product: display.clone(), component: None, bootstrap: None, channel: Some("AppX".into()), pe: display,
                 }),
                 latest_version: None, status: AgentStatus::Checking, running: is_process_running("codex.exe"),
-                update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), detail: "桌面版安装".into(), last_checked: None,
+                update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::Winget { package_id: "OpenAI.Codex".into() }, detail: "桌面版安装".into(), last_checked: None,
             });
         }
 
@@ -47,7 +47,7 @@ impl AgentAdapter for CodexAdapter {
                     executable_path: Some(executable.to_string_lossy().into_owned()),
                     version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("CLI".into()), pe: version }),
                     latest_version: None, status: AgentStatus::Checking, running: is_process_running("codex.exe"), update_mode: UpdateMode::NativeUpdater,
-                    official_url: self.official_url().into(), detail: "CLI 安装".into(), last_checked: None,
+                    official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::Winget { package_id: "OpenAI.Codex".into() }, detail: "CLI 安装".into(), last_checked: None,
                 });
             }
         }
@@ -62,7 +62,7 @@ impl AgentAdapter for CodexAdapter {
                 install_path: Some(path.to_string_lossy().into_owned()),
                 executable_path: executable.map(|p| p.to_string_lossy().into_owned()),
                 version: None, latest_version: None, status: AgentStatus::Checking, running: is_process_running("codex.exe"),
-                update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), detail: "Programs 路径".into(), last_checked: None,
+                update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::Winget { package_id: "OpenAI.Codex".into() }, detail: "Programs 路径".into(), last_checked: None,
             })
         } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 Codex 安装")) }
     }
@@ -94,7 +94,9 @@ impl AgentAdapter for CodexAdapter {
         }
         agent.last_checked = Some("刚刚".into());
         Ok(())
-    }fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> {
+    }fn install_method(&self) -> InstallMethod { InstallMethod::Winget { package_id: "OpenAI.Codex".into() } }
+    fn install(&self) -> Result<(), String> { winget_install("OpenAI.Codex") }
+    fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> {
         Ok(UpdateResult { success: false, message: "请通过 Microsoft Store 或 codex update 更新".into(), mode: UpdateMode::ManualAction, official_url: Some(self.official_url().into()), needs_restart: false, previous_version: None, current_version: None })
     }
     fn restart_if_was_running(&self, agent: &mut AgentInstance, was_running: bool) -> Result<(), String> {
@@ -127,7 +129,7 @@ fn try_running_codex(adapter: &CodexAdapter) -> Option<AgentInstance> {
                 version: Some(crate::model::VersionSnapshot { product: ver.clone(), component: None, bootstrap: None, channel: Some("AppX".into()), pe }),
                 latest_version: None, status: AgentStatus::Checking, running: true,
                 update_mode: UpdateMode::NativeUpdater,
-                official_url: adapter.official_url().into(), detail: "桌面版安装".into(), last_checked: None,
+                official_url: adapter.official_url().into(), install_url: adapter.official_url().into(), install_method: InstallMethod::Winget { package_id: "OpenAI.Codex".into() }, detail: "桌面版安装".into(), last_checked: None,
             });
         }
     }
@@ -164,14 +166,14 @@ impl AgentAdapter for HermesAdapter {
                 executable_path: Some(hermes_exe.to_string_lossy().into_owned()),
                 version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("installer".into()), pe: version }),
                 latest_version: None, status: AgentStatus::Checking, running: is_process_running("hermes.exe"), update_mode: UpdateMode::NativeUpdater,
-                official_url: self.official_url().into(), detail: "原生 Windows 安装".into(), last_checked: None,
+                official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: "原生 Windows 安装".into(), last_checked: None,
             });
         }
         let candidates = vec![local_app_data().join("hermes\\hermes-agent\\bin\\hermes.exe"), local_app_data().join("hermes\\bin\\hermes.exe"), PathBuf::from("C:\\Users\\Public\\.hermes\\bin\\hermes.exe")];
         if let Some(path) = first_file(&candidates) {
             let install = path.parent().and_then(|p| p.parent()).map(PathBuf::from);
             let version = command_capture("hermes.exe", &["--version"]).and_then(|s| s.lines().next().map(|l| l.trim().to_string()));
-            Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: install.map(|p| p.to_string_lossy().into_owned()), executable_path: Some(path.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("installer".into()), pe: version }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("hermes.exe"), update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), detail: "原生 Windows 安装".into(), last_checked: None })
+            Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: install.map(|p| p.to_string_lossy().into_owned()), executable_path: Some(path.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("installer".into()), pe: version }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("hermes.exe"), update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: "原生 Windows 安装".into(), last_checked: None })
         } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 Hermes 安装")) }
     }
     fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
@@ -199,6 +201,8 @@ impl AgentAdapter for HermesAdapter {
         agent.last_checked = Some("刚刚".into());
         Ok(())
     }
+    fn install_method(&self) -> InstallMethod { InstallMethod::OpenBrowser { url: self.official_url().into() } }
+    fn install(&self) -> Result<(), String> { Err("Hermes Agent 请前往 github.com/NousResearch/hermes-agent 下载安装".into()) }
     fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> { Ok(UpdateResult { success: false, message: "请运行 hermes update 完成更新".into(), mode: UpdateMode::NativeUpdater, official_url: Some(self.official_url().into()), needs_restart: false, previous_version: None, current_version: None }) }
     fn restart_if_was_running(&self, _agent: &mut AgentInstance, was_running: bool) -> Result<(), String> { if was_running { let _ = command_capture("hermes.exe", &["gateway", "restart"]); } Ok(()) }
 }
@@ -213,7 +217,7 @@ impl AgentAdapter for OpenClawAdapter {
         let roots = vec![local_app_data().join("npm"), PathBuf::from("C:\\Users\\Public\\.npm-global")];
         if let Some(path) = first_file(&path_candidates(&roots, &["openclaw.cmd", "openclaw.exe"])) {
             let version = command_capture("openclaw.cmd", &["--version"]).and_then(|s| s.lines().next().map(|l| l.trim().to_string()));
-            Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: path.parent().map(|p| p.to_string_lossy().into_owned()), executable_path: Some(path.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("npm".into()), pe: version }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("openclaw.exe") || is_process_running("openclaw-gateway.exe"), update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), detail: "npm / pnpm 安装".into(), last_checked: None })
+            Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: path.parent().map(|p| p.to_string_lossy().into_owned()), executable_path: Some(path.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("npm".into()), pe: version }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("openclaw.exe") || is_process_running("openclaw-gateway.exe"), update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: "npm / pnpm 安装".into(), last_checked: None })
         } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 OpenClaw 安装")) }
     }
     fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
@@ -241,6 +245,8 @@ impl AgentAdapter for OpenClawAdapter {
         agent.last_checked = Some("刚刚".into());
         Ok(())
     }
+    fn install_method(&self) -> InstallMethod { InstallMethod::OpenBrowser { url: self.official_url().into() } }
+    fn install(&self) -> Result<(), String> { Err("OpenClaw 请前往 openclaw.ai 下载安装".into()) }
     fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> { Ok(UpdateResult { success: false, message: "请运行 openclaw update 完成更新".into(), mode: UpdateMode::NativeUpdater, official_url: Some(self.official_url().into()), needs_restart: false, previous_version: None, current_version: None }) }
     fn restart_if_was_running(&self, _agent: &mut AgentInstance, was_running: bool) -> Result<(), String> { if was_running { let _ = command_capture("openclaw.cmd", &["gateway", "restart"]); } Ok(()) }
 }

@@ -43,10 +43,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Agent Manager v${{ github.ref_name }}'
+          releaseName: 'Agent Manager ${{ github.ref_name }}'
           releaseBody: |
-            自动构建版本 v${{ github.ref_name }}（Windows x64）
+            自动构建版本 ${{ github.ref_name }}（Windows x64）
 
-            下载 Agent.Manager_${{ github.ref_name }}_x64-setup.exe 安装。
+            下载下方 Assets 中的 Windows x64 安装程序（NSIS 安装包）。
           releaseDraft: false
           prerelease: false

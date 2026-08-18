@@ -1,1 +1,1 @@
-{}
+{"main-window":{"identifier":"main-window","description":"Allow the main window to open directory pickers for DirectDownload installer flows.","local":true,"windows":["main"],"permissions":["dialog:allow-open"]}}
