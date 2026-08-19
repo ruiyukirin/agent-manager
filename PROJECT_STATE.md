@@ -4,7 +4,7 @@
 Agent Manager —— Tauri 2 + React + Rust 桌面应用，用于检测、版本检查、更新和管理本机 AI Agent。
 
 ## 当前版本
-0.1.0
+0.1.2
 
 ## 技术栈
 Tauri 2 + React + TypeScript + Vite + Rust

@@ -316,7 +316,7 @@ function App() {
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark">A</div><div><h1>Agent Manager</h1><p>本地 AI Agent 管家</p></div></div>
         <div className="sidebar-section"><span className="section-label">工作台</span><button className="nav-item active" onClick={() => setSelectedId(selected.id)}><span>▦</span> Agent 总览</button><button className="nav-item" onClick={() => void configureSchedule()}><span>◷</span> 检查计划</button><button className="nav-item" onClick={() => setMessage('日志会记录在本机，不会上传')}><span>≡</span> 操作日志</button></div>
-        <div className="sidebar-bottom"><div className="privacy"><span>●</span><div><strong>本地优先</strong><p>版本、配置和日志仅保存在本机</p></div></div><div className="app-version">Agent Manager v0.1.0</div></div>
+        <div className="sidebar-bottom"><div className="privacy"><span>●</span><div><strong>本地优先</strong><p>版本、配置和日志仅保存在本机</p></div></div><div className="app-version">Agent Manager v0.1.2</div></div>
       </aside>
 
       <main className="main-content">
