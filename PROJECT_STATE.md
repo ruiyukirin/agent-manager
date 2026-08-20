@@ -45,6 +45,8 @@ Tauri 2 + React + TypeScript + Vite + Rust
 - WebView2 窗口在 sandbox 下不显示（非项目 bug，是 Codex sandbox 对 WebView2 数据目录无写权限）
 
 ## 最近修改
+- tauri.conf.json：应用标识 com.tencent.agentmanager 改为 com.ruiyukirin.agentmanager
+- src-tauri/icons/icon.ico：替换为选定「章鱼剪影 + 眼睛」Logo，宝蓝色（内含 16/24/32/48/64/128/256 多尺寸）
 - common.rs：GitHub/npm/重定向/下载 curl 增加 --connect-timeout 与 --max-time，新增 home_dir()
 - claude.rs：使用 home_dir() 替代硬编码用户路径
 - main.rs：统一计划任务名，修正 /TR 引号与删除错误判断；discover_agents 错误可见化；install_agent 成功后重新检测并 save_agents
