@@ -12,6 +12,9 @@ pub trait AgentAdapter: Send + Sync {
     fn update(&self, agent: &mut AgentInstance) -> Result<UpdateResult, String>;
     fn install(&self) -> Result<(), String>;
     fn restart_if_was_running(&self, agent: &mut AgentInstance, was_running: bool) -> Result<(), String>;
+    /// 该适配器的 update() 是否会真正改动本机文件。只有会改的才值得在更新前做备份，
+    /// 否则就是白拷一份（GUI 程序动辄几百 MB）。当前所有适配器都只是提示用户手动更新。
+    fn update_mutates_files(&self) -> bool { false }
 }
 
 pub fn all_adapters() -> Vec<Box<dyn AgentAdapter>> {
@@ -21,7 +24,7 @@ pub fn all_adapters() -> Vec<Box<dyn AgentAdapter>> {
         Box::new(adapters::HermesAdapter),
         Box::new(adapters::OpenClawAdapter),
         Box::new(adapters::WorkBuddyAdapter),
-        Box::new(adapters::MarvisAdapter),
+        Box::new(adapters::DeepSeekAdapter),
     ]
 }
 
@@ -48,11 +51,26 @@ pub fn not_installed(id: &str, name: &str, publisher: &str, url: &str, detail: &
         latest_version: None,
         status: AgentStatus::NotInstalled,
         running: false,
-        update_mode: if id == "workbuddy" || id == "marvis" { UpdateMode::ManualAction } else { UpdateMode::NativeUpdater },
+        update_mode: if id == "workbuddy" || id == "deepseek" { UpdateMode::ManualAction } else { UpdateMode::NativeUpdater },
         official_url: url.to_string(),
         install_url,
         install_method,
         detail: detail.to_string(),
         last_checked: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::all_adapters;
+
+    #[test]
+    fn no_adapter_mutates_files_on_update_yet() {
+        // 目前所有适配器的 update() 都只是提示用户手动更新，所以都不该声称会改本机文件
+        //（否则每次点更新都会先做一次毫无意义的备份）。将来某个适配器真的会改文件时，
+        // 这个断言会失败，提醒把它的 update_mutates_files() 改成 true。
+        for adapter in all_adapters() {
+            assert!(!adapter.update_mutates_files(), "{} 声称会改动本机文件，请确认更新前备份确实生效", adapter.id());
+        }
     }
 }

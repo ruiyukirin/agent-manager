@@ -2,7 +2,7 @@
 
 本地 AI Agent 发现与更新管理工具。
 
-检测本机安装的 AI 编码助手（Claude、Codex、WorkBuddy、Marvis 等），识别版本、检查更新、备份配置，统一管理入口。
+检测本机安装的 AI 编码助手（Claude、Codex、DeepSeek Harness、WorkBuddy 等），识别版本、检查更新、备份配置，统一管理入口。
 
 ## 功能
 

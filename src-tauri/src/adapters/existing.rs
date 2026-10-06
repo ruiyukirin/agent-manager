@@ -1,4 +1,4 @@
-﻿use super::common::*;
+use super::common::*;
 use crate::adapter::{AgentAdapter, not_installed};
 use crate::model::{AgentInstance, AgentStatus, InstallMethod, UpdateMode, UpdateResult};
 use std::fs;
@@ -40,7 +40,8 @@ impl AgentAdapter for CodexAdapter {
         // Step 2: Codex CLI installation
         if let Some(cli_path) = find_codex_cli_install() {
             if let Some(executable) = first_file(&vec![cli_path.join("codex.exe")]) {
-                let version = parse_version_from_path(&executable).or_else(|| version_from_file(&executable));
+                let args: &[&str] = &["--version"];
+                let version = probe_version(&VersionProbe { cli: Some((&executable, args)), declared: &[], pe: Some(&executable), path_hint: Some(&executable) });
                 return Ok(AgentInstance {
                     id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true,
                     install_path: Some(cli_path.to_string_lossy().into_owned()),
@@ -57,11 +58,14 @@ impl AgentAdapter for CodexAdapter {
         let candidates = path_candidates(&roots, &["Codex", "codex.exe"]);
         if let Some(path) = first_existing(&candidates) {
             let executable = first_file(&vec![path.join("codex.exe"), path.join("app\\resources\\codex.exe")]);
+            let args: &[&str] = &["--version"];
+            let version = executable.as_ref().and_then(|exe| probe_version(&VersionProbe { cli: Some((exe, args)), declared: &[], pe: Some(exe), path_hint: Some(exe) }));
             Ok(AgentInstance {
                 id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true,
                 install_path: Some(path.to_string_lossy().into_owned()),
                 executable_path: executable.map(|p| p.to_string_lossy().into_owned()),
-                version: None, latest_version: None, status: AgentStatus::Checking, running: is_process_running("codex.exe"),
+                version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("CLI".into()), pe: version }),
+                latest_version: None, status: AgentStatus::Checking, running: is_process_running("codex.exe"),
                 update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::Winget { package_id: "OpenAI.Codex".into() }, detail: "Programs 路径".into(), last_checked: None,
             })
         } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 Codex 安装")) }
@@ -158,22 +162,22 @@ impl AgentAdapter for HermesAdapter {
     fn official_url(&self) -> &'static str { official_url_for("hermes") }
     fn discover(&self) -> Result<AgentInstance, String> {
         if let Some(hermes_exe) = find_hermes_exe() {
-            let install = hermes_exe.parent().and_then(|p| p.parent()).map(PathBuf::from);
-            let version = command_capture("hermes.exe", &["--version"]).and_then(|s| s.lines().next().map(|l| l.trim().to_string()));
+            let install = install_root_for(&hermes_exe, "hermes-agent");
+            let (version, component) = hermes_versions(&hermes_exe);
             return Ok(AgentInstance {
                 id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true,
-                install_path: install.map(|p| p.to_string_lossy().into_owned()),
+                install_path: Some(install.to_string_lossy().into_owned()),
                 executable_path: Some(hermes_exe.to_string_lossy().into_owned()),
-                version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("installer".into()), pe: version }),
+                version: Some(crate::model::VersionSnapshot { product: version.clone(), component, bootstrap: None, channel: Some("installer".into()), pe: version }),
                 latest_version: None, status: AgentStatus::Checking, running: is_process_running("hermes.exe"), update_mode: UpdateMode::NativeUpdater,
                 official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: "原生 Windows 安装".into(), last_checked: None,
             });
         }
         let candidates = vec![local_app_data().join("hermes\\hermes-agent\\bin\\hermes.exe"), local_app_data().join("hermes\\bin\\hermes.exe"), PathBuf::from("C:\\Users\\Public\\.hermes\\bin\\hermes.exe")];
         if let Some(path) = first_file(&candidates) {
-            let install = path.parent().and_then(|p| p.parent()).map(PathBuf::from);
-            let version = command_capture("hermes.exe", &["--version"]).and_then(|s| s.lines().next().map(|l| l.trim().to_string()));
-            Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: install.map(|p| p.to_string_lossy().into_owned()), executable_path: Some(path.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("installer".into()), pe: version }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("hermes.exe"), update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: "原生 Windows 安装".into(), last_checked: None })
+            let install = install_root_for(&path, "hermes-agent");
+            let (version, component) = hermes_versions(&path);
+            Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: Some(install.to_string_lossy().into_owned()), executable_path: Some(path.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component, bootstrap: None, channel: Some("installer".into()), pe: version }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("hermes.exe"), update_mode: UpdateMode::NativeUpdater, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: "原生 Windows 安装".into(), last_checked: None })
         } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 Hermes 安装")) }
     }
     fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
@@ -249,6 +253,18 @@ impl AgentAdapter for OpenClawAdapter {
     fn install(&self) -> Result<(), String> { Err("OpenClaw 请前往 openclaw.ai 下载安装".into()) }
     fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> { Ok(UpdateResult { success: false, message: "请运行 openclaw update 完成更新".into(), mode: UpdateMode::NativeUpdater, official_url: Some(self.official_url().into()), needs_restart: false, previous_version: None, current_version: None }) }
     fn restart_if_was_running(&self, _agent: &mut AgentInstance, was_running: bool) -> Result<(), String> { if was_running { let _ = command_capture("openclaw.cmd", &["gateway", "restart"]); } Ok(()) }
+}
+
+/// 问一次 hermes.exe，返回（云端可比的版本, 内部 semver）。
+/// Hermes 的云端标签是日期体系（v2026.9.24），程序自报的第一个版本号是内部 semver（v0.21.3），
+/// 两者跨体系不能直接比大小，所以「当前版本」取输出里的日期版本，semver 放进 component 只作展示。
+fn hermes_versions(exe: &Path) -> (Option<String>, Option<String>) {
+    let raw = command_capture(&exe.to_string_lossy(), &["--version"]);
+    let semver = raw.as_deref().and_then(normalize_version);
+    match raw.as_deref().and_then(normalize_date_version) {
+        Some(date) => (Some(date), semver),
+        None => (probe_version(&VersionProbe { cli: None, declared: &[], pe: Some(exe), path_hint: Some(exe) }), semver),
+    }
 }
 
 fn find_hermes_exe() -> Option<PathBuf> {

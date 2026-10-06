@@ -58,8 +58,11 @@ fn update_agent(agent_id: String, state: tauri::State<AppState>) -> Result<Updat
     }
     let previous = agent.version.as_ref().and_then(|version| version.product.clone());
     let was_running = agent.running;
-    let _ = backup::backup_before_update(agent);
     let adapter = adapter_for(&agent_id).ok_or_else(|| format!("没有适配器: {}", agent_id))?;
+    // 只有会真正改动本机文件的更新才值得先备份；当前所有适配器都是提示用户手动更新，不必白拷一份。
+    if adapter.update_mutates_files() {
+        let _ = backup::backup_before_update(agent);
+    }
     let mut result = adapter.update(agent)?;
     result.previous_version = previous;
     if result.success && was_running {

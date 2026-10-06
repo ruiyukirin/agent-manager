@@ -1,7 +1,7 @@
 use super::common::*;
 use crate::adapter::{AgentAdapter, not_installed};
 use crate::model::{AgentInstance, AgentStatus, InstallMethod, UpdateMode, UpdateResult};
-use std::{path::{Path, PathBuf}};
+use std::path::Path;
 
 pub struct WorkBuddyAdapter;
 impl AgentAdapter for WorkBuddyAdapter {
@@ -12,21 +12,29 @@ impl AgentAdapter for WorkBuddyAdapter {
     fn install_method(&self) -> InstallMethod { InstallMethod::OpenBrowser { url: self.official_url().into() } }
     fn install(&self) -> Result<(), String> { Err("WorkBuddy 请前往 workbuddy.ai 下载安装".into()) }
     fn discover(&self) -> Result<AgentInstance, String> {
-        if let Some(install) = read_registry_install_location("WorkBuddy") {
-            if let Some(executable) = first_file(&vec![install.join("WorkBuddy.exe"), install.join("Application\\WorkBuddy.exe")]) {
-                let version = version_from_file(&executable);
-                return Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: Some(install.to_string_lossy().into_owned()), executable_path: Some(executable.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("Windows x64".into()), pe: version }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("WorkBuddy.exe"), update_mode: UpdateMode::ManualAction, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: "Windows 客户端已识别".into(), last_checked: None });
-            }
-        }
-        let roots = vec![program_files().join("Tencent"), local_app_data().join("Tencent"), local_app_data().join("Programs"), app_data().join("Tencent"), app_data().join("Microsoft\\Windows\\Start Menu\\Programs")];
-        let names = ["WorkBuddy", "WorkBuddy.exe", "WorkBuddy\\WorkBuddy.exe", "WorkBuddy\\Application\\WorkBuddy.exe", "CodeBuddy\\WorkBuddy.exe"];
-        let paths = path_candidates(&roots, &names);
-        let path = first_file(&paths).or_else(|| roots.iter().filter_map(|root| find_child(root, "WorkBuddy.exe")).next());
-        if let Some(path) = path {
-            let install = path.parent().and_then(|p| p.parent()).map(Path::to_path_buf).or_else(|| Some(path.parent().unwrap_or(&path).to_path_buf()));
-            let version = version_from_file(&path);
-            Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: install.map(|p| p.to_string_lossy().into_owned()), executable_path: Some(path.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("Windows x64".into()), pe: version.clone() }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("WorkBuddy.exe"), update_mode: UpdateMode::ManualAction, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: if version.is_some() { "Windows 客户端已识别" } else { "Windows 客户端路径已识别，版本需由安装包确认" }.into(), last_checked: None })
-        } else { Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 WorkBuddy 安装")) }
+        // 卸载表里有 WorkBuddy 的版本，但不一定给 InstallLocation（本机就是空的），所以位置还得靠找。
+        let entry = uninstall_entry("WorkBuddy");
+        let declared = entry.as_ref().and_then(|(version, _)| version.clone());
+        let registry_root = entry.as_ref().and_then(|(_, location)| location.clone());
+
+        let executable = registry_root.as_ref()
+            .and_then(|root| first_file(&vec![root.join("WorkBuddy.exe"), root.join("Application\\WorkBuddy.exe")]))
+            .or_else(|| {
+                let roots = vec![program_files().join("Tencent"), local_app_data().join("Tencent"), local_app_data().join("Programs"), app_data().join("Tencent"), app_data().join("Microsoft\\Windows\\Start Menu\\Programs")];
+                let names = ["WorkBuddy", "WorkBuddy.exe", "WorkBuddy\\WorkBuddy.exe", "WorkBuddy\\Application\\WorkBuddy.exe", "CodeBuddy\\WorkBuddy.exe"];
+                let paths = path_candidates(&roots, &names);
+                first_file(&paths).or_else(|| roots.iter().filter_map(|root| find_child(root, "WorkBuddy.exe")).next())
+            });
+
+        let Some(executable) = executable else {
+            return Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 WorkBuddy 安装"));
+        };
+
+        // WorkBuddy 是 GUI 程序，不能执行 --version（会弹出窗口），版本按「卸载表声明 → 内嵌版本 → 路径」取。
+        let declared_candidates = [declared];
+        let version = probe_version(&VersionProbe { cli: None, declared: &declared_candidates, pe: Some(&executable), path_hint: Some(&executable) });
+        let install = registry_root.unwrap_or_else(|| install_root_for(&executable, "workbuddy"));
+        Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: Some(install.to_string_lossy().into_owned()), executable_path: Some(executable.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product: version.clone(), component: None, bootstrap: None, channel: Some("Windows x64".into()), pe: version.clone() }), latest_version: None, status: AgentStatus::Checking, running: is_process_running("WorkBuddy.exe"), update_mode: UpdateMode::ManualAction, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::OpenBrowser { url: self.official_url().into() }, detail: if version.is_some() { "Windows 客户端已识别" } else { "Windows 客户端路径已识别，版本需由安装包确认" }.into(), last_checked: None })
     }
     fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
         match winget_latest_version("Tencent.WorkBuddy") {
@@ -58,71 +66,3 @@ impl AgentAdapter for WorkBuddyAdapter {
     }
     fn restart_if_was_running(&self, agent: &mut AgentInstance, was_running: bool) -> Result<(), String> { if was_running { if let Some(path) = agent.executable_path.as_deref() { return launch(Path::new(path)); } } Ok(()) }
 }
-
-pub struct MarvisAdapter;
-impl AgentAdapter for MarvisAdapter {
-    fn id(&self) -> &'static str { "marvis" }
-    fn display_name(&self) -> &'static str { "Marvis" }
-    fn publisher(&self) -> &'static str { "Tencent" }
-    fn official_url(&self) -> &'static str { official_url_for("marvis") }
-    fn install_method(&self) -> InstallMethod { InstallMethod::DirectDownload { url: self.official_url().into() } }
-    fn install(&self) -> Result<(), String> { Err("Marvis 请前往 marvis.qq.com 下载安装".into()) }
-    fn discover(&self) -> Result<AgentInstance, String> {
-        let program_root = read_registry_install_location("Marvis").unwrap_or_else(|| program_files().join("Tencent\\Marvis"));
-        let launcher = first_file(&vec![program_root.join("MarvisLauncher.exe"), program_root.join("Application\\MarvisLauncher.exe")]);
-        if !program_root.exists() && launcher.is_none() { return Ok(not_installed(self.id(), self.display_name(), self.publisher(), self.official_url(), "未发现 Marvis 安装")); }
-        let setup_dirs = program_root.join("Application").read_dir().ok().into_iter().flatten().filter_map(|entry| entry.ok().map(|e| e.path())).filter(|path| path.is_dir() && path.join("Setup.json").exists()).collect::<Vec<PathBuf>>();
-        let setup = setup_dirs.last();
-        let component = setup.and_then(|path| parse_setup_version(&path.join("Setup.json")));
-        let product = read_registry_display_version("Marvis").or_else(|| component.clone());
-        let executable = setup.as_ref().and_then(|path| first_file(&vec![path.join("MarvisLauncher.exe"), path.join("Marvis.exe"), path.join("MarvisUpdate.exe")])).or(launcher);
-        let pe_version = setup.as_ref().and_then(|path| read_pe_version(&path.join("Marvis.exe")));
-        let running = is_process_running("Marvis.exe") || is_process_running("MarvisLauncher.exe") || is_process_running("MarvisSvr.exe");
-        Ok(AgentInstance { id: self.id().into(), name: self.display_name().into(), publisher: self.publisher().into(), installed: true, install_path: Some(program_root.to_string_lossy().into_owned()), executable_path: executable.map(|p| p.to_string_lossy().into_owned()), version: Some(crate::model::VersionSnapshot { product, component, bootstrap: None, channel: Some("Windows".into()), pe: pe_version }), latest_version: None, status: AgentStatus::Checking, running, update_mode: UpdateMode::ManualAction, official_url: self.official_url().into(), install_url: self.official_url().into(), install_method: InstallMethod::DirectDownload { url: self.official_url().into() }, detail: if setup.is_some() { "检测到 MarvisUpdate.exe 和版本清单" } else { "检测到 Marvis 启动器" }.into(), last_checked: None })
-    }
-    fn check_latest(&self, agent: &mut AgentInstance) -> Result<(), String> {
-        // 通过跟踪下载重定向获取最新安装包名，从中提取版本号
-        let latest = curl_follow_redirect(self.official_url())
-            .and_then(|url| {
-                let filename = url.rsplit('/').next().unwrap_or(&url).to_string();
-                parse_version_from_filename(&filename)
-            });
-        match latest {
-            Some(version) => {
-                agent.latest_version = Some(version.clone());
-                let current = agent.version.as_ref().and_then(|v| v.product.as_deref().or(v.pe.as_deref())).unwrap_or("");
-                if current.is_empty() {
-                    agent.status = AgentStatus::ManualAction;
-                    agent.detail = format!("云端最新版本：{}", version);
-                } else if is_update_available(current, &version) {
-                    agent.status = AgentStatus::UpdateAvailable;
-                    agent.detail = format!("{} → {} 可更新", current, version);
-                } else {
-                    agent.status = AgentStatus::UpToDate;
-                    agent.detail = "已是最新版本".into();
-                }
-            }
-            None => {
-                agent.latest_version = None;
-                agent.status = AgentStatus::ManualAction;
-                agent.detail = "请通过 MarvisUpdate.exe 或官方安装器更新".into();
-            }
-        }
-        agent.last_checked = Some("刚刚".into());
-        Ok(())
-    }
-    fn update(&self, _agent: &mut AgentInstance) -> Result<UpdateResult, String> {
-        Ok(UpdateResult { success: false, message: "Marvis 官方未提供可直接读取的精确应用版本接口；请通过 MarvisUpdate.exe 或官方安装器更新".into(), mode: UpdateMode::ManualAction, official_url: Some(self.official_url().into()), needs_restart: false, previous_version: None, current_version: None })
-    }
-    fn restart_if_was_running(&self, agent: &mut AgentInstance, was_running: bool) -> Result<(), String> { if was_running { let launcher = program_files().join("Tencent\\Marvis\\MarvisLauncher.exe"); let path = agent.executable_path.as_deref().map(Path::new).unwrap_or(&launcher); return launch(path); } Ok(()) }
-}
-
-
-
-
-
-
-
-
-
-

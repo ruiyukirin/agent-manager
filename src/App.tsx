@@ -1,28 +1,35 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import type { AgentInstance, AgentStatus, InstallResult, ScheduleConfig, UpdateResult } from './types'
+import type { AgentInstance, AgentStatus, InstallMethod, InstallResult, ScheduleConfig, UpdateResult } from './types'
 
 const agentIcon: Record<string, string> = {
   codex: '/icons/codex.png',
   hermes: '/icons/hermes.png',
   openclaw: '/icons/openclaw.png',
   workbuddy: '/icons/workbuddy.png',
-  marvis: '/icons/marvis.ico',
+  deepseek: '/icons/deepseek.png',
   claude: '/icons/claude.svg',
 }
 
+// 首次扫描返回前的占位数据：只保留 id / 名称 / 官方入口，不编造版本号和安装路径。
+// 真实数据一律来自后端 discover_agents，避免界面在扫描完成前显示假信息。
+function placeholder(id: string, name: string, publisher: string, officialUrl: string, installMethod: InstallMethod): AgentInstance {
+  return {
+    id, name, publisher, installed: false, installPath: null, executablePath: null,
+    version: null, latestVersion: null, status: 'checking', running: false,
+    updateMode: 'manual-action', officialUrl, installUrl: officialUrl, installMethod,
+    detail: '等待扫描', lastChecked: null,
+  }
+}
+
 const fallbackAgents: AgentInstance[] = [
-  {
-    id: 'codex', name: 'Codex', publisher: 'OpenAI', installed: true, installPath: 'C:\\Program Files\\WindowsApps', executablePath: null,
-    version: { product: '26.803.10989.0', component: null, bootstrap: null, channel: 'AppX', pe: '26.803.10989.0' }, latestVersion: null,
-    status: 'checking', running: false, updateMode: 'native-updater', officialUrl: 'https://apps.microsoft.com/', detail: 'AppX 安装', lastChecked: null, installUrl: 'https://apps.microsoft.com/', installMethod: { winget: { packageId: 'OpenAI.Codex' } },
-  },
-  { id: 'claude', name: 'Claude', publisher: 'Anthropic', installed: false, installPath: null, executablePath: null, version: null, latestVersion: null, status: 'not-installed', running: false, updateMode: 'manual-action', officialUrl: 'https://www.anthropic.com/claude-code', detail: '未发现', lastChecked: null, installUrl: 'https://www.anthropic.com/claude-code', installMethod: { openBrowser: { url: 'https://www.anthropic.com/claude-code' } } },
-  { id: 'hermes', name: 'Hermes Agent', publisher: 'Nous Research', installed: false, installPath: null, executablePath: null, version: null, latestVersion: null, status: 'not-installed', running: false, updateMode: 'native-updater', officialUrl: 'https://github.com/NousResearch/hermes-agent', detail: '未发现', lastChecked: null, installUrl: 'https://github.com/NousResearch/hermes-agent', installMethod: { openBrowser: { url: 'https://github.com/NousResearch/hermes-agent' } } },
-  { id: 'openclaw', name: 'OpenClaw', publisher: 'OpenClaw Foundation', installed: false, installPath: null, executablePath: null, version: null, latestVersion: null, status: 'not-installed', running: false, updateMode: 'native-updater', officialUrl: 'https://openclaw.ai', detail: '未发现', lastChecked: null, installUrl: 'https://openclaw.ai', installMethod: { openBrowser: { url: 'https://openclaw.ai' } } },
-  { id: 'workbuddy', name: 'WorkBuddy', publisher: 'Tencent', installed: false, installPath: null, executablePath: null, version: null, latestVersion: null, status: 'not-installed', running: false, updateMode: 'manual-action', officialUrl: 'https://workbuddy.ai/', detail: '官方 Windows x64 客户端', lastChecked: null, installUrl: 'https://workbuddy.ai/', installMethod: { openBrowser: { url: 'https://workbuddy.ai/' } } },
-  { id: 'marvis', name: 'Marvis', publisher: 'Tencent', installed: true, installPath: 'C:\\Program Files\\Tencent\\Marvis', executablePath: 'C:\\Program Files\\Tencent\\Marvis\\Application\\1.60.2100.153\\Marvis.exe', version: { product: '1.60.10.14', component: '1.60.2100.153', bootstrap: null, channel: 'Windows', pe: '1.60.2100.153' }, latestVersion: null, status: 'checking', running: false, updateMode: 'manual-action', officialUrl: 'https://marvis.qq.com/download/exe', detail: '检测到 MarvisUpdate.exe', lastChecked: null, installUrl: 'https://marvis.qq.com/download/exe', installMethod: { directDownload: { url: 'https://marvis.qq.com/download/exe' } } },
+  placeholder('codex', 'Codex', 'OpenAI', 'https://apps.microsoft.com/', { winget: { packageId: 'OpenAI.Codex' } }),
+  placeholder('claude', 'Claude', 'Anthropic', 'https://www.anthropic.com/claude-code', { openBrowser: { url: 'https://www.anthropic.com/claude-code' } }),
+  placeholder('hermes', 'Hermes Agent', 'Nous Research', 'https://github.com/NousResearch/hermes-agent', { openBrowser: { url: 'https://github.com/NousResearch/hermes-agent' } }),
+  placeholder('openclaw', 'OpenClaw', 'OpenClaw Foundation', 'https://openclaw.ai', { openBrowser: { url: 'https://openclaw.ai' } }),
+  placeholder('workbuddy', 'WorkBuddy', 'Tencent', 'https://workbuddy.ai/', { openBrowser: { url: 'https://workbuddy.ai/' } }),
+  placeholder('deepseek', 'DeepSeek Harness', 'DeepSeek', 'https://github.com/deepseek-ai/deepseek-harness', { directDownload: { url: 'https://download.deepseek.com/dsh-desk/feeds/win-x64/nightly.yml' } }),
 ]
 
 const statusLabel: Record<AgentStatus, string> = {
@@ -53,12 +60,12 @@ type StepName =
 
 function App() {
   const [agents, setAgents] = useState<AgentInstance[]>(fallbackAgents)
-  const [selectedId, setSelectedId] = useState('marvis')
+  const [selectedId, setSelectedId] = useState('deepseek')
   const [loading, setLoading] = useState(true)
   const [working, setWorking] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [schedule, setSchedule] = useState<ScheduleConfig>({ enabled: true, time: '02:00', agentIds: ['codex', 'hermes', 'openclaw', 'workbuddy', 'marvis'] })
+  const [schedule, setSchedule] = useState<ScheduleConfig>({ enabled: true, time: '02:00', agentIds: ['codex', 'hermes', 'openclaw', 'workbuddy', 'deepseek'] })
   const [installTarget, setInstallTarget] = useState<AgentInstance | null>(null)
   const [step, setStep] = useState<StepName | null>(null)
   const [stepMessage, setStepMessage] = useState('')
@@ -331,7 +338,7 @@ function App() {
 
           {selected && <div className="detail-panel panel"><div className="panel-heading"><div className="detail-heading-with-icon"><img className="detail-icon-img" src={agentIcon[selected.id] ?? ""} alt={selected.name} onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }} /><div><p className="eyebrow">AGENT DETAIL</p><h3>{selected.name}</h3></div></div><span className="publisher-chip">{selected.publisher}</span></div>{selected.installed ? <><div className="version-hero"><div><span>当前版本</span><strong>{selected.version?.product ?? '未识别'}</strong>{selected.version?.component && selected.version.component !== selected.version?.product && <small>组件 {selected.version.component}</small>}{selected.version?.pe && selected.version.pe !== selected.version?.product && <small>PE {selected.version.pe}</small>}</div><div className="version-arrow">→</div><div><span>最新版本</span><strong className={selected.latestVersion ? 'version-highlight' : ''}>{selected.latestVersion ?? '等待检查'}</strong><small>{selected.status === 'manual-action' ? '官方入口可更新' : '用户确认后更新'}</small></div></div><div className="detail-info"><div><span>安装位置</span><code>{selected.installPath ?? '未知'}</code></div><div><span>执行文件</span><code>{selected.executablePath ?? selected.installPath ?? '未发现'}</code></div><div><span>更新方式</span><strong>{selected.updateMode === 'manual-action' ? '官方入口 / 手动操作' : '内置更新器'}</strong></div><div><span>运行状态</span><strong>{selected.running ? '运行中' : '未运行'}</strong></div></div><div className="action-row"><button className="primary-button" onClick={() => void check(selected.id)} disabled={working === selected.id}>{working === selected.id ? '处理中…' : selected.latestVersion ? '检查更新' : '检查版本'}</button>{selected.status === 'manual-action' && <button className="secondary-button" onClick={() => void openOfficial(selected.id)}>打开官方入口</button>}{selected.status === 'update-available' && <button className="secondary-button" onClick={() => void update(selected.id)}>确认更新</button>}</div></> : <div className="empty-detail"><div className="empty-icon">＋</div><h4>尚未检测到 {selected.name}</h4><p>安装后重新扫描，管理器会自动识别版本和更新。</p><div className="action-row"><button className="primary-button" onClick={() => void requestInstall(selected)} disabled={working === selected.id}>{working === selected.id ? '安装中…' : '一键安装'}</button><button className="secondary-button" onClick={() => void openOfficial(selected.id)}>打开官方下载</button></div></div>}</div>}
         </section>
-        <section className="notice"><span>ⓘ</span><p><strong>安全更新策略</strong>　每次更新都会先创建本机备份，并按照更新前运行状态决定是否重启。WorkBuddy 和 Marvis 的静默安装参数尚未在本机验证时，会提供官方入口而不是误报更新成功。</p></section>
+        <section className="notice"><span>ⓘ</span><p><strong>安全更新策略</strong>　更新与安装均由官方渠道完成，本程序不会静默覆盖文件；确实需要本程序执行安装时会先备份本机配置（凭据类文件除外），并按更新前的运行状态决定是否重启。WorkBuddy 与 DeepSeek Harness 的静默安装参数尚未在本机验证，遇到未验证的路径会提供官方入口，而不是误报更新成功。</p></section>
 
         {renderDialog()}
       </main>
