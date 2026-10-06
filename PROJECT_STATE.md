@@ -55,11 +55,20 @@ Tauri 2 + React + TypeScript + Vite + Rust
 ## 当前问题
 - 真实 Winget / DirectDownload 端到端安装与更新未在本机实机验证（按要求不实际安装任何 Agent）
 - Hermes 的日期版本体系是从官方标签推断的（v2026.9.24 / v2026.9.21 / v2026.9.14 …），若上游改成 semver 需同步调整 hermes_versions()
+- README 两处不实描述已随双语改写修正（「更新前自动备份」「更新后按需重启」改为如实说明）
+- 界面打开后所有行停在「检查中」、「最新版本」显示「等待检查」：程序不会自动检查更新，需用户逐个点「检查版本」；且状态文案「检查中」并不准确，实际是「尚未检查」
+- 顶栏日期硬编码为 `OVERVIEW / 2026-08-14`，不随当前时间变化
+- 首次扫描约 20~40 秒（每个适配器都要查注册表、跑 PowerShell 读版本、查进程），期间界面显示占位数据
 
 ## 已知 Bug
 - WebView2 窗口在 sandbox 下不显示（非项目 bug，是 Codex sandbox 对 WebView2 数据目录无写权限）
 
 ## 最近修改
+- 新增 LICENSE（MIT，Copyright (c) 2026 Kirin）
+- 作者署名：package.json 的 author/license、Cargo.toml 的 authors、19 个源码文件头部 `// Author: Kirin`
+- README 重写为双语：README.md（英文，默认）+ README.zh-CN.md，顶部互加语言切换；补下载入口、截图、支持清单，并把两处不实描述改成如实说明
+- 新增 docs/screenshot.png（1440x900，PNG）
+- 仓库元数据：英文简介、主页指向 Releases、15 个话题标签
 - 版本探测根因修复：common.rs 新增 normalize_version / VersionProbe / probe_version / install_root_for / normalize_date_version，各适配器改为走统一探测链
 - Codex：CLI 分支与 Programs 分支补上 codex.exe --version（此前当前版本恒为空，明明有更新也报不出来）
 - Hermes：改用绝对路径执行 hermes.exe --version（此前用裸文件名靠 PATH，只取到空串），并按日期版本比较
@@ -106,11 +115,12 @@ Tauri 2 + React + TypeScript + Vite + Rust
 ## 下一步任务
 - 等待人工进行 Git 提交确认（暂不 add/commit/push）
 - 真实 Windows 环境端到端验证：Winget 安装、DirectDownload 静默安装、定时任务
-- 对外发布准备（第二批）：LICENSE 文件 + 作者署名、README 英文版、仓库简介/主页/话题标签、应用内自动更新（tauri-plugin-updater）、代码签名证书
+- 对外发布准备（剩余）：应用内自动更新（tauri-plugin-updater）、代码签名证书
 - 跨平台暂不做：当前为 Windows 专用（reg.exe / tasklist / schtasks / winget / PE 版本）
 
 ## 重要技术决策
 - 安装方式三态：Winget / DirectDownload / OpenBrowser
+- 截图方法（踩过坑）：窗口被遮挡时 Chromium 会停止重绘，此时抓屏（CopyFromScreen）会拍到别的窗口、PrintWindow 只能拿到旧帧。正确做法是用 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` 打开调试端口，再用 CDP 的 `Page.captureScreenshot` 由渲染器直出
 - 版本探测统一走 common.rs 的 probe_version，优先级：程序自报（--version）> 卸载表 DisplayVersion > 可执行文件 PE 版本 > 路径推断；GUI 程序（WorkBuddy / DeepSeek Harness）不执行 --version，避免误弹窗口
 - 备份只备配置不备二进制，凭据类文件（credential / secret / token / password / .key / .pem / cookie）一律排除；`~/.dsh` 体积太大且含凭据，明确不纳入
 - DeepSeek Harness 接入依据（均为本机实测）：卸载键名是随机 GUID，版本靠遍历 HKCU/HKLM 卸载表取 DisplayVersion（当前 0.2.0-rc.2，与卸载程序 exe、官方 feed 三处一致）
