@@ -13,7 +13,7 @@ jobs:
     # Rust 测试里有直接调用 cmd.exe / powershell.exe 的用例，必须在 Windows 上跑。
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -24,7 +24,7 @@ jobs:
           workspaces: src-tauri
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: lts/*
 
