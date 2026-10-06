@@ -1,0 +1,42 @@
+name: CI
+
+# 日常提交就跑的快检查：版本一致性 + 前端构建 + Rust 单元测试。
+# 出安装包走 build-release.yml（只在打标签时触发），避免每次提交都跑几分钟的打包。
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    # Rust 测试里有直接调用 cmd.exe / powershell.exe 的用例，必须在 Windows 上跑。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check version consistency
+        run: npm run check-version
+
+      # 必须先构建前端：Tauri 的 generate_context! 在编译期就要读 ../dist。
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml

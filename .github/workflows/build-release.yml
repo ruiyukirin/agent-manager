@@ -34,6 +34,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Check version consistency (tag vs package/tauri/Cargo)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node scripts/check-version.mjs "${{ github.ref_name }}"
+
       - name: Build frontend
         run: npm run build
 
