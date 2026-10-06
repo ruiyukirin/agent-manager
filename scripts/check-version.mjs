@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Author: Kirin
 /**
  * 版本一致性校验。
  *

@@ -2,6 +2,8 @@
   "name": "agent-manager",
   "private": true,
   "version": "0.1.2",
+  "author": "Kirin (https://github.com/ruiyukirin)",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",

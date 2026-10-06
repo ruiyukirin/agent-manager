@@ -1,4 +1,5 @@
-﻿use agent_manager::model::AgentInstance;
+// Author: Kirin
+use agent_manager::model::AgentInstance;
 use std::sync::Mutex;
 
 #[derive(Default)]

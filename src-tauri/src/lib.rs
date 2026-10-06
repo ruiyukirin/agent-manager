@@ -1,4 +1,5 @@
-﻿pub mod adapter;
+// Author: Kirin
+pub mod adapter;
 pub mod adapters;
 pub mod model;
 

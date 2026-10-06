@@ -1,3 +1,4 @@
+// Author: Kirin
 use std::{env, fs, path::{Path, PathBuf}, process::{Command, Stdio}, time::{Duration, Instant}};
 
 pub fn program_files() -> PathBuf { env::var_os("ProgramFiles").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("C:\\Program Files")) }

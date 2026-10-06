@@ -1,3 +1,4 @@
+// Author: Kirin
 mod claude;
 mod common;
 mod deepseek;

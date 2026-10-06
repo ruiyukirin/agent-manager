@@ -1,1 +1,2 @@
-﻿/// <reference types="vite/client" />
+// Author: Kirin
+/// <reference types="vite/client" />

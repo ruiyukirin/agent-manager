@@ -2,6 +2,7 @@
 name = "agent-manager"
 version = "0.1.2"
 description = "Local AI agent discovery and update manager"
+authors = ["Kirin"]
 edition = "2021"
 license = "MIT"
 

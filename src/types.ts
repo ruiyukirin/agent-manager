@@ -1,3 +1,4 @@
+// Author: Kirin
 export type AgentStatus = 'not-installed' | 'checking' | 'up-to-date' | 'update-available' | 'manual-action' | 'error'
 export type InstallMethod = { winget: { packageId: string } } | { directDownload: { url: string } } | { openBrowser: { url: string } }
 

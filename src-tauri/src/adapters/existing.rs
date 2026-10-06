@@ -1,3 +1,4 @@
+// Author: Kirin
 use super::common::*;
 use crate::adapter::{AgentAdapter, not_installed};
 use crate::model::{AgentInstance, AgentStatus, InstallMethod, UpdateMode, UpdateResult};
